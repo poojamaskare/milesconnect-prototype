@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: milesconnect-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: milesconnect
+    ports:
+      - "5432:5432"
+    volumes:
+      - milesconnect_pgdata:/var/lib/postgresql/data
+
+volumes:
+  milesconnect_pgdata:

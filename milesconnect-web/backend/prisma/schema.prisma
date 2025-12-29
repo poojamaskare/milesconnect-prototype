@@ -1,0 +1,407 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  DRIVER
+}
+
+enum VehicleStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum ShipmentStatus {
+  DRAFT
+  PLANNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum TripSheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REVERSED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  UPI
+  OTHER
+}
+
+enum DocumentType {
+  POD
+  INVOICE
+  RC
+  INSURANCE
+  LICENSE
+  OTHER
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         UserRole
+  isActive     Boolean  @default(true)
+
+  driverProfile Driver?
+
+  createdShipments Shipment[] @relation("ShipmentCreatedBy")
+  createdTripSheets TripSheet[] @relation("TripSheetCreatedBy")
+  createdInvoices   Invoice[]   @relation("InvoiceCreatedBy")
+  uploadedDocuments Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Driver {
+  id            String  @id @default(uuid()) @db.Uuid
+  userId        String  @unique @db.Uuid
+  licenseNumber String  @unique
+  phone         String?
+  address       String?
+  isActive      Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  shipments   Shipment[]
+  tripSheets  TripSheet[]
+  vehicles    Vehicle[]  @relation("VehiclePrimaryDriver")
+  documents   Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Vehicle {
+  id                 String        @id @default(uuid()) @db.Uuid
+  registrationNumber String        @unique
+  vin                String?       @unique
+  make               String?
+  model              String?
+  capacityKg         Int?
+  status             VehicleStatus @default(ACTIVE)
+
+  // Vehicle display name and image
+  name               String?
+  imageUrl           String?
+
+  // Maintenance cycle tracking
+  maintenanceCycleDays    Int?      // e.g., 30, 60, 90 days
+  lastMaintenanceDate     DateTime?
+  nextMaintenanceDate     DateTime?
+
+  primaryDriverId String? @db.Uuid
+  primaryDriver   Driver? @relation("VehiclePrimaryDriver", fields: [primaryDriverId], references: [id], onDelete: SetNull)
+
+  shipments  Shipment[]
+  tripSheets TripSheet[]
+  documents  Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Shipment {
+  id              String         @id @default(uuid()) @db.Uuid
+  referenceNumber String         @unique
+  status          ShipmentStatus @default(DRAFT)
+
+  originAddress      String
+  destinationAddress String
+  scheduledPickupAt  DateTime?
+  scheduledDropAt    DateTime?
+  actualPickupAt     DateTime?
+  actualDropAt       DateTime?
+
+  weightKg Int?
+
+  createdById String @db.Uuid
+  createdBy   User   @relation("ShipmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  driverId String? @db.Uuid
+  driver   Driver? @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  vehicleId String? @db.Uuid
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  tripLinks TripSheetShipment[]
+
+  invoice   Invoice?
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([createdById])
+}
+
+model TripSheet {
+  id        String         @id @default(uuid()) @db.Uuid
+  sheetNo   String         @unique
+  status    TripSheetStatus @default(DRAFT)
+
+  startOdometerKm Int?
+  endOdometerKm   Int?
+  startedAt       DateTime?
+  endedAt         DateTime?
+
+  // Route information
+  startLocation   String?
+  endLocation     String?
+  routeDescription String?
+
+  // Fuel tracking
+  fuelAtStart     Float?  // Liters at start
+  fuelAtEnd       Float?  // Liters at end
+  
+  // Expense tracking - stored as integer cents for accuracy
+  currency        String @default("INR")
+  fuelExpenseCents BigInt @default(0)
+  tollExpenseCents BigInt @default(0)
+  otherExpenseCents BigInt @default(0)
+  totalExpenseCents BigInt @default(0)
+
+  // Additional notes and compliance
+  notes           String?
+  managerApprovedById String? @db.Uuid
+  managerApprovedAt   DateTime?
+
+  driverId String @db.Uuid
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Restrict)
+
+  vehicleId String @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  createdById String @db.Uuid
+  createdBy   User   @relation("TripSheetCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  shipments   TripSheetShipment[]
+  fuelStops   FuelStop[]
+  expenses    TripExpense[]
+  documents   Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([createdById])
+}
+
+model FuelStop {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripSheetId     String   @db.Uuid
+  tripSheet       TripSheet @relation(fields: [tripSheetId], references: [id], onDelete: Cascade)
+
+  location        String
+  odometerKm      Int?
+  fuelLiters      Float
+  pricePerLiter   Float?
+  
+  currency        String @default("INR")
+  totalCostCents  BigInt
+
+  receiptNumber   String?
+  notes           String?
+  fueledAt        DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripSheetId])
+}
+
+model TripExpense {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripSheetId     String   @db.Uuid
+  tripSheet       TripSheet @relation(fields: [tripSheetId], references: [id], onDelete: Cascade)
+
+  category        String  // e.g., "Toll", "Parking", "Repair", "Food", "Other"
+  description     String?
+  
+  currency        String @default("INR")
+  amountCents     BigInt
+
+  receiptNumber   String?
+  notes           String?
+  expenseAt       DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripSheetId])
+  @@index([category])
+}
+
+model TripSheetShipment {
+  id          String   @id @default(uuid()) @db.Uuid
+  tripSheetId String   @db.Uuid
+  shipmentId  String   @db.Uuid
+  sequence    Int?
+
+  tripSheet TripSheet @relation(fields: [tripSheetId], references: [id], onDelete: Cascade)
+  shipment  Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripSheetId, shipmentId])
+  @@index([shipmentId])
+}
+
+model Invoice {
+  id            String       @id @default(uuid()) @db.Uuid
+  invoiceNumber String       @unique
+  status        InvoiceStatus @default(DRAFT)
+
+  // Monetary fields stored as integer cents for deterministic arithmetic (ACID-friendly).
+  currency      String @default("INR")
+  subtotalCents BigInt @default(0)
+  taxCents      BigInt @default(0)
+  totalCents    BigInt
+
+  issuedAt DateTime?
+  dueAt    DateTime?
+  paidAt   DateTime?
+
+  shipmentId String @unique @db.Uuid
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+
+  createdById String @db.Uuid
+  createdBy   User   @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  payments   Payment[]
+  documents  Document[]
+
+  // Optional optimistic-concurrency helper (increment in app when updating).
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([shipmentId])
+  @@index([createdById])
+}
+
+model Payment {
+  id String @id @default(uuid()) @db.Uuid
+
+  invoiceId String @db.Uuid
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  status PaymentStatus @default(PENDING)
+  method PaymentMethod
+
+  // Deterministic arithmetic + easy constraints.
+  currency   String @default("INR")
+  amountCents BigInt
+
+  // Enforces idempotency at the DB layer to prevent double-posting.
+  idempotencyKey String @unique
+
+  // Provider identifiers (optional but typically unique when present).
+  provider          String?
+  providerReference String? @unique
+
+  receivedAt DateTime @default(now())
+  succeededAt DateTime?
+  failedAt    DateTime?
+  reversedAt  DateTime?
+
+  version Int @default(1)
+
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model Document {
+  id   String @id @default(uuid()) @db.Uuid
+  type DocumentType @default(OTHER)
+
+  fileName String
+  mimeType String?
+  sizeBytes BigInt?
+  url      String
+
+  uploadedById String? @db.Uuid
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  // Optional links to domain objects (kept simple; enforce “exactly one” in app logic).
+  shipmentId  String? @db.Uuid
+  shipment    Shipment? @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  tripSheetId String? @db.Uuid
+  tripSheet   TripSheet? @relation(fields: [tripSheetId], references: [id], onDelete: Cascade)
+
+  vehicleId String? @db.Uuid
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  driverId String? @db.Uuid
+  driver   Driver? @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  invoiceId String? @db.Uuid
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  paymentId String? @db.Uuid
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([uploadedById])
+  @@index([shipmentId])
+  @@index([tripSheetId])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([invoiceId])
+  @@index([paymentId])
+}

@@ -1,0 +1,243 @@
+import type { NextFunction, Request, Response } from "express";
+import { z } from "zod";
+
+import prisma from "../prisma/client";
+
+type HttpError = Error & { statusCode?: number; code?: string };
+
+function httpError(statusCode: number, message: string, code?: string): HttpError {
+  const err = new Error(message) as HttpError;
+  err.statusCode = statusCode;
+  if (code) err.code = code;
+  return err;
+}
+
+const vehicleStatusSchema = z.enum(["ACTIVE", "INACTIVE", "MAINTENANCE"]);
+
+const createVehicleSchema = z
+  .object({
+    registrationNumber: z.string().min(1),
+    vin: z.string().min(1).optional(),
+    make: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    capacityKg: z.number().int().positive().optional(),
+    status: vehicleStatusSchema.optional(),
+    primaryDriverId: z.string().uuid().optional(),
+    // New fields for vehicle display and maintenance
+    name: z.string().min(1).optional(),
+    imageUrl: z.string().url().optional(),
+    maintenanceCycleDays: z.number().int().positive().optional(),
+    lastMaintenanceDate: z.coerce.date().optional(),
+  })
+  .strict();
+
+const updateVehicleSchema = z
+  .object({
+    registrationNumber: z.string().min(1).optional(),
+    vin: z.string().min(1).optional().nullable(),
+    make: z.string().min(1).optional().nullable(),
+    model: z.string().min(1).optional().nullable(),
+    capacityKg: z.number().int().positive().optional().nullable(),
+    status: vehicleStatusSchema.optional(),
+    primaryDriverId: z.string().uuid().optional().nullable(),
+    // New fields for vehicle display and maintenance
+    name: z.string().min(1).optional().nullable(),
+    imageUrl: z.string().url().optional().nullable(),
+    maintenanceCycleDays: z.number().int().positive().optional().nullable(),
+    lastMaintenanceDate: z.coerce.date().optional().nullable(),
+  })
+  .strict();
+
+export async function listVehicles(req: Request, res: Response, next: NextFunction) {
+  try {
+    const vehicles = await prisma.vehicle.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        primaryDriver: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+        shipments: {
+          where: {
+            status: { in: ["PLANNED", "IN_TRANSIT"] },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            referenceNumber: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({ data: vehicles });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getVehicle(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+
+    const vehicle = await prisma.vehicle.findUnique({
+      where: { id },
+      include: {
+        primaryDriver: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+        shipments: true,
+        tripSheets: true,
+        documents: true,
+      },
+    });
+
+    if (!vehicle) throw httpError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
+
+    res.status(200).json({ data: vehicle });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createVehicle(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = createVehicleSchema.safeParse(req.body);
+    if (!parsed.success) throw httpError(400, "Invalid request body", "VALIDATION_ERROR");
+
+    const body = parsed.data;
+
+    // Calculate next maintenance date if cycle is provided
+    let nextMaintenanceDate: Date | undefined;
+    if (body.maintenanceCycleDays) {
+      const baseDate = body.lastMaintenanceDate ?? new Date();
+      nextMaintenanceDate = new Date(baseDate);
+      nextMaintenanceDate.setDate(nextMaintenanceDate.getDate() + body.maintenanceCycleDays);
+    }
+
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        registrationNumber: body.registrationNumber,
+        vin: body.vin,
+        make: body.make,
+        model: body.model,
+        capacityKg: body.capacityKg,
+        status: body.status,
+        primaryDriverId: body.primaryDriverId,
+        name: body.name,
+        imageUrl: body.imageUrl,
+        maintenanceCycleDays: body.maintenanceCycleDays,
+        lastMaintenanceDate: body.lastMaintenanceDate,
+        nextMaintenanceDate: nextMaintenanceDate,
+      },
+    });
+
+    res.status(201).json({ data: vehicle });
+  } catch (err: unknown) {
+    // Prisma unique constraint error
+    if (typeof err === "object" && err && "code" in err) {
+      const anyErr = err as { code?: string };
+      if (anyErr.code === "P2002") {
+        next(httpError(409, "Vehicle already exists", "DUPLICATE_VEHICLE"));
+        return;
+      }
+    }
+
+    next(err);
+  }
+}
+
+export async function updateVehicle(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+
+    const parsed = updateVehicleSchema.safeParse(req.body);
+    if (!parsed.success) throw httpError(400, "Invalid request body", "VALIDATION_ERROR");
+
+    const body = parsed.data;
+
+    // Fetch existing vehicle to compute next maintenance date
+    const existing = await prisma.vehicle.findUnique({ where: { id } });
+    if (!existing) throw httpError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
+
+    // Calculate next maintenance date if cycle or last date is updated
+    let nextMaintenanceDate: Date | null | undefined;
+    const cycleDays = body.maintenanceCycleDays ?? existing.maintenanceCycleDays;
+    const lastDate = body.lastMaintenanceDate !== undefined 
+      ? body.lastMaintenanceDate 
+      : existing.lastMaintenanceDate;
+
+    if (cycleDays && lastDate) {
+      nextMaintenanceDate = new Date(lastDate);
+      nextMaintenanceDate.setDate(nextMaintenanceDate.getDate() + cycleDays);
+    } else if (body.maintenanceCycleDays === null || body.lastMaintenanceDate === null) {
+      nextMaintenanceDate = null;
+    }
+
+    const vehicle = await prisma.vehicle.update({
+      where: { id },
+      data: {
+        registrationNumber: body.registrationNumber,
+        vin: body.vin === undefined ? undefined : body.vin,
+        make: body.make === undefined ? undefined : body.make,
+        model: body.model === undefined ? undefined : body.model,
+        capacityKg: body.capacityKg === undefined ? undefined : body.capacityKg,
+        status: body.status,
+        primaryDriverId: body.primaryDriverId === undefined ? undefined : body.primaryDriverId,
+        name: body.name === undefined ? undefined : body.name,
+        imageUrl: body.imageUrl === undefined ? undefined : body.imageUrl,
+        maintenanceCycleDays: body.maintenanceCycleDays === undefined ? undefined : body.maintenanceCycleDays,
+        lastMaintenanceDate: body.lastMaintenanceDate === undefined ? undefined : body.lastMaintenanceDate,
+        nextMaintenanceDate: nextMaintenanceDate,
+      },
+    });
+
+    res.status(200).json({ data: vehicle });
+  } catch (err: unknown) {
+    if (typeof err === "object" && err && "code" in err) {
+      const anyErr = err as { code?: string };
+      if (anyErr.code === "P2025") {
+        next(httpError(404, "Vehicle not found", "VEHICLE_NOT_FOUND"));
+        return;
+      }
+      if (anyErr.code === "P2002") {
+        next(httpError(409, "Vehicle already exists", "DUPLICATE_VEHICLE"));
+        return;
+      }
+    }
+
+    next(err);
+  }
+}
+
+export async function deleteVehicle(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+
+    await prisma.vehicle.delete({
+      where: { id },
+    });
+
+    res.status(204).send();
+  } catch (err: unknown) {
+    if (typeof err === "object" && err && "code" in err) {
+      const anyErr = err as { code?: string };
+      if (anyErr.code === "P2025") {
+        next(httpError(404, "Vehicle not found", "VEHICLE_NOT_FOUND"));
+        return;
+      }
+    }
+
+    next(err);
+  }
+}
