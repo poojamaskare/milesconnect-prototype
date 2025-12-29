@@ -2,6 +2,11 @@
 
 A modern fleet management and logistics platform built with Next.js 16 and Express.js. MilesConnect helps transportation companies manage their vehicles, drivers, shipments, trip sheets, maintenance schedules, and billing operations.
 
+![License](https://img.shields.io/badge/license-ISC-blue.svg)
+![Next.js](https://img.shields.io/badge/Next.js-16.1-black)
+![Node.js](https://img.shields.io/badge/Node.js-18+-green)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
+
 ## 🚀 Features
 
 - **Dashboard** - Real-time overview of fleet operations and KPIs
