@@ -285,11 +285,6 @@ Change ports in respective configuration files if needed.
 ### New Features
 
 - **ML Service Integration**: Added a dedicated Python-based Machine Learning service (`ml-service`) for advanced analytics, including:
-    - **Demand Forecasting**: Uses ARIMA/Prophet models to predict future shipment volumes.
-    - **Anomaly Detection**: Implements Isolation Forest to identify irregular patterns in logistics data.
-    - **Delivery Prediction**: Utilizes Gradient Boosting to estimate delivery times more accurately.
-    - **Driver Performance Scoring**: Calculates driver safety and efficiency scores.
-    - **Route Optimization**: Provides intelligent route suggestions.
 - **Dynamic Forecasting Fallback**: implemented a robust fallback mechanism in the backend. If the ML service is unavailable, the system automatically defaults to a historical moving average ensuring dashboard continuity.
 
 ### Bug Fixes & Enchancements
