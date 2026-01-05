@@ -1,296 +1,284 @@
-# MilesConnect - Fleet Management System
+# MilesConnect
 
-A modern fleet management and logistics platform built with Next.js 16 and Express.js. MilesConnect helps transportation companies manage their vehicles, drivers, shipments, trip sheets, maintenance schedules, and billing operations.
+Full-stack fleet management system with route optimization, predictive maintenance, and real-time analytics.
 
-![License](https://img.shields.io/badge/license-ISC-blue.svg)
-![Next.js](https://img.shields.io/badge/Next.js-16.1-black)
-![Node.js](https://img.shields.io/badge/Node.js-18+-green)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
-
-## 🚀 Features
-
-- **Dashboard** - Real-time overview of fleet operations and KPIs
-- **Fleet Management** - Live vehicle tracking with Mapbox integration
-- **Vehicle Management** - Add, edit, and manage vehicle inventory
-- **Driver Management** - Driver profiles and assignment tracking
-- **Shipment Tracking** - End-to-end shipment lifecycle management
-- **Trip Sheets** - Create and manage trip documentation
-- **Maintenance Scheduling** - Vehicle maintenance cycle tracking
-- **Billing & Invoicing** - Invoice generation and payment tracking
-- **Document Management** - Store and organize important documents (POD, RC, Insurance, etc.)
-
-## 📁 Project Structure
+## Architecture Overview
 
 ```
-milesconnect/
-├── readme.md
-└── milesconnect-web/
-    ├── app/                    # Next.js App Router pages
-    │   ├── dashboard/          # Dashboard pages
-    │   ├── (dashboard)/        # Dashboard route group
-    │   │   ├── billing/
-    │   │   ├── documents/
-    │   │   ├── fleet/
-    │   │   ├── maintenance/
-    │   │   ├── shipments/
-    │   │   ├── trip-sheets/
-    │   │   └── vehicles/
-    │   └── api/                # API routes (proxy)
-    ├── lib/                    # Shared utilities
-    ├── types/                  # TypeScript types
-    ├── public/                 # Static assets
-    └── backend/                # Express.js API
-        ├── src/
-        │   ├── controllers/    # Route controllers
-        │   ├── routes/         # API routes
-        │   ├── middlewares/    # Express middlewares
-        │   ├── services/       # Business logic
-        │   └── prisma/         # Prisma client
-        └── prisma/
-            ├── schema.prisma   # Database schema
-            ├── migrations/     # Database migrations
-            └── seed.ts         # Seed data
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Frontend (Next.js)                        │
+│                         localhost:3000                              │
+└───────────────┬─────────────────────────────┬───────────────────────┘
+                │                             │
+                ▼                             ▼
+┌───────────────────────────┐   ┌─────────────────────────────────────┐
+│   Backend API (Express)   │   │    Optimization Service (Go)        │
+│      localhost:3001       │   │         localhost:8081              │
+│                           │   │                                     │
+│  - Shipments CRUD         │   │  - Load Optimization (Bin Packing)  │
+│  - Vehicles CRUD          │   │  - Route Optimization (TSP)         │
+│  - Drivers CRUD           │   │  - Fleet Allocation                 │
+│  - Documents              │   │                                     │
+│  - Billing                │   └─────────────────────────────────────┘
+└───────────────┬───────────┘
+                │
+                ▼
+┌───────────────────────────┐   ┌─────────────────────────────────────┐
+│   Database (SQLite)       │   │      ML Service (FastAPI)           │
+│                           │   │         localhost:8000              │
+│  - Prisma ORM             │   │                                     │
+│  - Auto-migrations        │   │  - Delay Prediction (XGBoost)       │
+└───────────────────────────┘   │  - Driver Scoring                   │
+                                │  - Fuel Anomaly Detection           │
+                                │  - Maintenance Prediction           │
+                                └─────────────────────────────────────┘
 ```
 
-## 🛠️ Tech Stack
+## Technology Stack
 
-### Frontend
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 15, TypeScript, Tailwind CSS, TanStack Query |
+| Backend API | Node.js, Express, Prisma ORM, SQLite |
+| Optimization Service | Go 1.21+, Standard Library |
+| ML Service | Python 3.10+, FastAPI, XGBoost, Scikit-learn |
 
-- **Framework**: Next.js 16.1 (App Router)
-- **Language**: TypeScript 5
-- **Styling**: Tailwind CSS 4
-- **State Management**: TanStack React Query
-- **Maps**: Mapbox GL
+## Features
 
-### Backend
+### Dashboard Modules
+- **Fleet Map**: Real-time vehicle tracking with status indicators
+- **Shipments**: Delivery management with route visualization
+- **Vehicles**: Asset management with maintenance scheduling
+- **Drivers**: Driver profiles with performance metrics
+- **Analytics**: KPIs, charts, and trend analysis
+- **Billing**: Invoice generation and payment tracking
+- **Documents**: Compliance and document management
 
-- **Framework**: Express.js 5
-- **Language**: TypeScript 5
-- **ORM**: Prisma 6
-- **Database**: PostgreSQL 16
-- **Validation**: Zod
+### Optimization Engine (Go Service)
+- **Load Optimizer**: Best-Fit Decreasing algorithm for weight-based vehicle allocation
+- **Route Optimizer**: Nearest Neighbor TSP for multi-stop route planning
+- **Fleet Allocation**: Assigns shipments to vehicles based on capacity constraints
 
-## 📋 Prerequisites
+### Machine Learning Models
+- **Delay Prediction**: XGBoost classifier trained on traffic and weather data
+- **Driver Scoring**: Performance rating (0-100) based on safety and efficiency
+- **Fuel Anomaly Detection**: Isolation Forest for identifying fuel theft patterns
+- **Maintenance Prediction**: Failure prediction based on vehicle telemetry
+- **ETA Estimation**: Arrival time calculation with route factors
 
-Before you begin, ensure you have the following installed:
+## Installation
 
-- **Node.js** 18.x or higher ([Download](https://nodejs.org/))
-- **npm** 9.x or higher (comes with Node.js)
-- **Docker** & Docker Compose ([Download](https://www.docker.com/products/docker-desktop/))
-- **Git** ([Download](https://git-scm.com/))
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- Go 1.21+
+- npm or yarn
 
-## 🚀 Getting Started
-
-### 1. Clone the Repository
-
+### 1. Clone Repository
 ```bash
 git clone https://github.com/itanishqshelar/milesconnect-prototype.git
-cd milesconnect-prototype
+cd milesconnect-prototype/milesconnect-web
 ```
 
-### 2. Set Up the Backend
-
-#### 2.1 Navigate to the backend directory
-
+### 2. Backend Setup
 ```bash
-cd milesconnect-web/backend
-```
-
-#### 2.2 Install dependencies
-
-```bash
+cd backend
 npm install
+npx prisma generate
+npx prisma db push
+npm run build
+npm start
+```
+Server runs on `http://localhost:3001`
+
+### 3. ML Service Setup
+```bash
+cd ml-service
+python -m venv venv
+
+# Windows
+.\venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
+
+pip install -r requirements.txt
+python src/api/app.py
+```
+Server runs on `http://localhost:8000`
+
+### 4. Optimization Service Setup
+```bash
+cd optimization-service
+go run cmd/server/main.go
+```
+Server runs on `http://localhost:8081`
+
+### 5. Frontend Setup
+```bash
+# From project root
+npm install
+npm run dev
+```
+Application runs on `http://localhost:3000`
+
+## API Endpoints
+
+### Backend API (Port 3001)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/vehicles | List all vehicles |
+| POST | /api/vehicles | Create vehicle |
+| GET | /api/shipments | List shipments |
+| POST | /api/shipments | Create shipment |
+| GET | /api/drivers | List drivers |
+| POST | /api/routing/optimize | Calculate optimized route |
+
+### Optimization Service (Port 8081)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /optimize | TSP route optimization |
+| POST | /optimize-load | Fleet allocation by weight |
+| GET | /health | Service health check |
+
+### ML Service (Port 8000)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /predict/delay | Predict shipment delay |
+| POST | /predict/eta | Estimate arrival time |
+| GET | /driver-score/{id} | Get driver performance score |
+| GET | /health | Service health check |
+
+## Project Structure
+
+```
+milesconnect-prototype/
+├── readme.md
+├── milesconnect-web/
+│   ├── app/                      # Next.js App Router pages
+│   │   ├── dashboard/
+│   │   │   ├── analytics/
+│   │   │   ├── billing/
+│   │   │   ├── drivers/
+│   │   │   ├── fleet/
+│   │   │   ├── maintenance/
+│   │   │   ├── optimization/     # Load and Route Optimizer UI
+│   │   │   ├── shipments/
+│   │   │   └── vehicles/
+│   │   └── layout.tsx
+│   ├── backend/                  # Express API server
+│   │   ├── src/
+│   │   │   ├── controllers/
+│   │   │   ├── routes/
+│   │   │   ├── services/
+│   │   │   └── utils/
+│   │   └── prisma/
+│   │       └── schema.prisma
+│   ├── optimization-service/     # Go optimization service
+│   │   ├── cmd/server/
+│   │   └── internal/
+│   │       ├── api/
+│   │       ├── data/
+│   │       ├── models/
+│   │       └── solver/
+│   ├── components/               # Shared React components
+│   └── lib/                      # Utilities and hooks
+└── ml-service/                   # Python ML service
+    └── src/
+        ├── api/
+        ├── models/
+        └── training/
 ```
 
-#### 2.3 Create environment file
+## Configuration
 
-Create a `.env` file in the `milesconnect-web/backend` directory:
+### Environment Variables
 
-```bash
-# Database
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/milesconnect?schema=public"
-
-# Server
+**Backend (.env)**
+```
+DATABASE_URL="file:./dev.db"
 PORT=3001
-NODE_ENV=development
-
-# CORS
-CORS_ORIGIN=http://localhost:3000
 ```
 
-#### 2.4 Start the PostgreSQL database
+**ML Service**
+```
+PORT=8000
+```
+
+**Optimization Service**
+```
+PORT=8081
+```
+
+## Development
+
+### Running All Services
+Open four terminal windows:
 
 ```bash
-npm run db:up
+# Terminal 1: Backend
+cd milesconnect-web/backend && npm start
+
+# Terminal 2: ML Service
+cd ml-service && python src/api/app.py
+
+# Terminal 3: Optimization Service
+cd milesconnect-web/optimization-service && go run cmd/server/main.go
+
+# Terminal 4: Frontend
+cd milesconnect-web && npm run dev
 ```
 
-This command starts a PostgreSQL 16 container using Docker Compose.
+### Building for Production
 
-#### 2.5 Run database migrations
-
+**Frontend**
 ```bash
-npm run prisma:migrate
+npm run build
+npm start
 ```
 
-#### 2.6 Seed the database (optional)
-
+**Backend**
 ```bash
-npm run prisma:seed
+cd backend
+npm run build
+npm start
 ```
 
-#### 2.7 Start the backend server
+## Testing
 
+### Verify Service Health
 ```bash
-npm run dev
+# Backend
+curl http://localhost:3001/api/health
+
+# ML Service
+curl http://localhost:8000/health
+
+# Optimization Service
+curl http://localhost:8081/health
 ```
 
-The backend API will be running at `http://localhost:3001`
-
-### 3. Set Up the Frontend
-
-#### 3.1 Open a new terminal and navigate to the frontend directory
-
+### Test Optimization Endpoint
 ```bash
-cd milesconnect-web
+curl -X POST http://localhost:8081/optimize-load \
+  -H "Content-Type: application/json" \
+  -d '{"vehicles":[{"id":"truck1","capacity_kg":40000,"current_load":0}],"shipments":[{"id":"s1","weight_kg":32000}]}'
 ```
 
-#### 3.2 Install dependencies
+## Database Schema
 
-```bash
-npm install
-```
+Core entities managed by Prisma:
 
-#### 3.3 Create environment file (optional)
+- **Vehicle**: Registration, make, model, capacity, maintenance status
+- **Driver**: License, contact, performance score, status
+- **Shipment**: Origin, destination, weight, status, assigned vehicle/driver
+- **Trip**: Route, distance, fuel, expenses, revenue
+- **Document**: Type, expiry, file storage reference
 
-Create a `.env.local` file in the `milesconnect-web` directory:
+## License
 
-```bash
-# Backend API URL
-NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+MIT
 
-# Mapbox (for fleet tracking map)
-NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_access_token
-```
+## Repository
 
-#### 3.4 Start the development server
-
-```bash
-npm run dev
-```
-
-The frontend will be running at `http://localhost:3000`
-
-### 4. Access the Application
-
-Open your browser and navigate to `http://localhost:3000`. You will be redirected to the dashboard.
-
-## 📝 Available Scripts
-
-### Frontend (`milesconnect-web/`)
-
-| Command         | Description              |
-| --------------- | ------------------------ |
-| `npm run dev`   | Start development server |
-| `npm run build` | Build for production     |
-| `npm run start` | Start production server  |
-| `npm run lint`  | Run ESLint               |
-
-### Backend (`milesconnect-web/backend/`)
-
-| Command                   | Description                              |
-| ------------------------- | ---------------------------------------- |
-| `npm run dev`             | Start development server with hot reload |
-| `npm run build`           | Compile TypeScript to JavaScript         |
-| `npm run start`           | Start production server                  |
-| `npm run db:up`           | Start PostgreSQL container               |
-| `npm run db:down`         | Stop PostgreSQL container                |
-| `npm run db:reset`        | Reset database (delete all data)         |
-| `npm run prisma:generate` | Generate Prisma client                   |
-| `npm run prisma:migrate`  | Run database migrations                  |
-| `npm run prisma:seed`     | Seed the database                        |
-| `npm run prisma:reset`    | Reset and reseed database                |
-
-## 🗄️ Database Schema
-
-The application uses the following main entities:
-
-- **User** - System users with roles (Admin, Manager, Driver)
-- **Driver** - Driver profiles linked to users
-- **Vehicle** - Fleet vehicles with status tracking
-- **Shipment** - Shipment records with lifecycle states
-- **TripSheet** - Trip documentation with fuel and expense tracking
-- **Invoice** - Billing and payment records
-- **Document** - File attachments (POD, Insurance, License, etc.)
-- **MaintenanceCycle** - Vehicle maintenance schedules
-
-## 🔌 API Endpoints
-
-The backend exposes RESTful APIs at `http://localhost:3001`:
-
-| Route              | Description           |
-| ------------------ | --------------------- |
-| `/api/dashboard`   | Dashboard statistics  |
-| `/api/drivers`     | Driver management     |
-| `/api/vehicles`    | Vehicle management    |
-| `/api/shipments`   | Shipment tracking     |
-| `/api/trip-sheets` | Trip sheet operations |
-| `/api/invoices`    | Invoice management    |
-| `/api/documents`   | Document management   |
-| `/api/fleet`       | Fleet tracking data   |
-
-## 🐳 Docker Commands
-
-```bash
-# Start database
-docker compose up -d
-
-# Stop database
-docker compose down
-
-# Stop and remove all data
-docker compose down -v
-
-# View logs
-docker compose logs -f db
-```
-
-## 🔧 Troubleshooting
-
-### Database connection issues
-
-1. Ensure Docker is running
-2. Check if port 5432 is available
-3. Verify the DATABASE_URL in your `.env` file
-
-### Prisma issues
-
-```bash
-# Regenerate Prisma client
-npm run prisma:generate
-
-# Reset database completely
-npm run prisma:reset
-```
-
-### Port conflicts
-
-- Frontend default: 3000
-- Backend default: 3001
-- PostgreSQL default: 5432
-
-Change ports in respective configuration files if needed.
-
-## 🔄 Recent Changes & Improvements
-
-### New Features
-
-- **ML Service Integration**: Added a dedicated Python-based Machine Learning service (`ml-service`) for advanced analytics, including:
-- **Dynamic Forecasting Fallback**: implemented a robust fallback mechanism in the backend. If the ML service is unavailable, the system automatically defaults to a historical moving average ensuring dashboard continuity.
-
-### Bug Fixes & Enchancements
-
-- **Fleet Utilization Widget**: Fixed backend logic to correctly categorize vehicles as "IN_USE" based on active trip sheets, ensuring the dashboard reflects real-time fleet status.
-- **Shipment Creation**: Resolved a "500 Internal Server Error" during shipment creation by fixing the `createdById` fallback logic and correcting Prisma client imports.
-- **Vehicle Deletion**: Fixed the unresponsive "Delete Vehicle" button by implementing a custom confirmation UI. Added robust error handling to prevent deletion of vehicles with active dependencies (shipments/trip sheets) and display clear error messages.
-- **Driver Creation**: Corrected Zod validation schemas in the backend to resolve "Invalid request body" errors, allowing for successful driver profile creation.
-- **General Stability**: Addressed various initial setup and configuration issues to ensure a smoother out-of-the-box experience for new deployments.
+https://github.com/itanishqshelar/milesconnect-prototype
