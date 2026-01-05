@@ -207,7 +207,7 @@ export default function MaintenanceClient() {
 				</div>
 				<button
 					type="button"
-					onClick={() => router.push("/vehicles/add")}
+					onClick={() => router.push("/dashboard/vehicles/add")}
 					className="inline-flex items-center justify-center rounded-md bg-foreground px-3 py-2 text-sm font-semibold text-background outline-none transition hover:bg-foreground/90 focus-visible:ring-2 focus-visible:ring-foreground/30"
 				>
 					+ Add Vehicle

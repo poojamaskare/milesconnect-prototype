@@ -142,6 +142,11 @@ function SidebarContent({
             href: "/dashboard/maintenance",
             enabled: true,
           },
+          {
+            label: "Optimization",
+            href: "/dashboard/optimization",
+            enabled: true,
+          },
         ],
       },
       {
