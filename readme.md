@@ -275,10 +275,4 @@ Core entities managed by Prisma:
 - **Trip**: Route, distance, fuel, expenses, revenue
 - **Document**: Type, expiry, file storage reference
 
-## License
 
-MIT
-
-## Repository
-
-https://github.com/itanishqshelar/milesconnect-prototype
