@@ -2,6 +2,9 @@ import "dotenv/config";
 
 import app from "./app";
 
+// eslint-disable-next-line no-console
+console.log("DB URL:", process.env.DATABASE_URL);
+
 const port = (() => {
 	const raw = process.env.PORT;
 	if (!raw) return 3001;

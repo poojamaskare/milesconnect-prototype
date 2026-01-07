@@ -130,13 +130,15 @@ function mergeHeaders(...headers: Array<HeadersInit | undefined>): Headers {
 }
 
 export function createApiClient(config: ApiClientConfig = {}) {
-	const baseUrl =
+	const baseUrl = "http://localhost:3001";
+	/*
 		config.baseUrl ??
 		process.env.NEXT_PUBLIC_BACKEND_URL ??
 		process.env.BACKEND_URL ??
 		process.env.NEXT_PUBLIC_API_BASE_URL ??
 		process.env.API_BASE_URL ??
-		"";
+		"http://localhost:3001";
+	*/
 
 	async function request<TResponse, TBody = unknown>(
 		options: ApiRequestOptions<TBody>

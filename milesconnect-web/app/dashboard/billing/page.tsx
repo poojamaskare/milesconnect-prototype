@@ -1,2 +1,10 @@
-export { metadata } from "../../../app/(dashboard)/billing/page";
-export { default } from "../../../app/(dashboard)/billing/page";
+import type { Metadata } from "next";
+
+import BillingClient from "./billing-client";
+
+export const metadata: Metadata = {
+  title: "Billing & Payments · MilesConnect",
+};
+export default function BillingPage() {
+	return <BillingClient />;
+}

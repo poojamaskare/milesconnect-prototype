@@ -35,6 +35,12 @@ export const queryKeys = {
     all: ["dashboard"] as const,
     kpis: () => [...queryKeys.dashboard.all, "kpis"] as const,
   },
+  // Analytics
+  analytics: {
+    all: ["analytics"] as const,
+    health: () => [...queryKeys.analytics.all, "health"] as const,
+    performance: () => [...queryKeys.analytics.all, "driver-performance"] as const,
+  },
 };
 
 // All query keys that should be invalidated when a trip completes

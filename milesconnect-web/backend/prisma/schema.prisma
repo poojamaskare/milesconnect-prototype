@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -39,6 +38,7 @@ enum TripSheetStatus {
   SUBMITTED
   APPROVED
   CANCELLED
+  SETTLED
 }
 
 enum InvoiceStatus {
@@ -72,6 +72,21 @@ enum DocumentType {
   OTHER
 }
 
+enum MaintenanceType {
+  ROUTINE
+  REPAIR
+  ACCIDENT
+  OTHER
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique
@@ -98,6 +113,10 @@ model Driver {
   phone         String?
   address       String?
   isActive      Boolean @default(true)
+  
+  // Performance Metrics
+  performanceScore Float    @default(0.0)
+  totalTrips       Int      @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -133,6 +152,7 @@ model Vehicle {
 
   shipments  Shipment[]
   tripSheets TripSheet[]
+  maintenanceLogs MaintenanceLog[]
   documents  Document[]
 
   createdAt DateTime @default(now())
@@ -152,6 +172,10 @@ model Shipment {
   actualDropAt       DateTime?
 
   weightKg Int?
+  
+  // Financials
+  priceCents BigInt @default(0)
+
 
   createdById String @db.Uuid
   createdBy   User   @relation("ShipmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -200,7 +224,23 @@ model TripSheet {
   fuelExpenseCents BigInt @default(0)
   tollExpenseCents BigInt @default(0)
   otherExpenseCents BigInt @default(0)
+  
+  // Advanced Trip Fields
+  driverAdvanceCents    BigInt @default(0) // Cash given to driver
+  driverAllowanceCents  BigInt @default(0) // Daily Bhatta * Days
+  loadingUnloadingCents BigInt @default(0) // Hamali/Labor
+  policeExpenseCents    BigInt @default(0) // En-route compliance/misc
+  adBlueExpenseCents    BigInt @default(0) // DEF fluid cost
+
   totalExpenseCents BigInt @default(0)
+  
+  // Settlement Logic
+  cashBalanceCents  BigInt @default(0) // Advance - Total Expenses
+  netProfitCents    BigInt @default(0) // Revenue - Total Expenses
+  totalRevenueCents BigInt @default(0) // Sum of shipment prices
+  settledAt         DateTime?
+
+
 
   // Additional notes and compliance
   notes           String?
@@ -370,6 +410,8 @@ model Document {
   mimeType String?
   sizeBytes BigInt?
   url      String
+  
+  expiryDate DateTime?
 
   uploadedById String? @db.Uuid
   uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -404,4 +446,46 @@ model Document {
   @@index([driverId])
   @@index([invoiceId])
   @@index([paymentId])
+}
+
+model MaintenanceLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  vehicleId   String   @db.Uuid
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  type        MaintenanceType
+  status      MaintenanceStatus @default(COMPLETED)
+  
+  description String
+  date        DateTime @default(now())
+  odometerKm  Int?
+  
+  costCents   BigInt @default(0)
+  providerName String?
+  
+  notes       String?
+  nextServiceDate DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([vehicleId])
+  @@index([date])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  action      String   // CREATE, UPDATE, DELETE
+  entityType  String   // User, Driver, Vehicle, etc.
+  entityId    String   // The ID of the record changed
+  
+  changes     String?  // JSON string of what changed (old vs new)
+  performedBy String?  // User ID who performed the action (if available)
+
+  createdAt   DateTime @default(now())
+
+  @@index([entityType])
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
 }

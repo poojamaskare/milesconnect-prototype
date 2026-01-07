@@ -1,11 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import ShipmentStatusTimeline, {
   type ShipmentLifecycleStatus,
 } from "./components/ShipmentStatusTimeline";
-import { api } from "@/lib/api";
+import { useShipments, useCreateShipment, useUpdateShipmentStatus, Shipment as ApiShipment, ShipmentStatus as ApiShipmentStatus } from "@/lib/hooks/useShipments";
+import { Modal } from "@/components/ui/Modal";
+import { AssignResourceForm } from "./components/AssignResourceForm";
+import { CreateTripSheetModal } from "@/app/dashboard/trip-sheets/components/CreateTripSheetModal";
+import { toast } from "sonner";
+
 
 type ShipmentStatus =
   | "Created"
@@ -38,32 +43,11 @@ type Shipment = {
   payment: { status: PaymentStatus; amount: string; invoiceId: string };
   route: { distanceKm: number; stops: number; vehicle: string };
   timeline: ShipmentEvent[];
+  driverId?: string;
+  vehicleId?: string;
 };
 
-type ApiShipmentStatus = "DRAFT" | "PLANNED" | "IN_TRANSIT" | "DELIVERED" | "CANCELLED";
-
-type ApiShipment = {
-  id: string;
-  referenceNumber: string;
-  originAddress: string;
-  destinationAddress: string;
-  status: ApiShipmentStatus;
-  createdAt?: string;
-  scheduledDropAt?: string | null;
-  createdBy?: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
-  vehicle?: {
-    registrationNumber?: string | null;
-  } | null;
-  invoice?: {
-    invoiceNumber?: string;
-    totalCents?: string | number | bigint;
-    status?: "DRAFT" | "ISSUED" | "PAID" | "VOID";
-  } | null;
-};
+/* Removed local ApiShipment type in favor of imported Shipment */
 
 function safeFirstToken(value: string) {
   const token = value.split(",")[0]?.trim();
@@ -138,22 +122,26 @@ function buildTimeline(status: ShipmentStatus, createdAt?: string): ShipmentEven
   }));
 }
 
+/* Adapters */
 function mapApiShipment(s: ApiShipment): Shipment {
-  const status = apiStatusToUi(s.status);
+  const status = apiStatusToUi(s.status as any); // Cast as our internal status matches/overlaps
   const originCity = safeFirstToken(s.originAddress);
   const destinationCity = safeFirstToken(s.destinationAddress);
 
+  // Invoice data might be missing if not included in hook, default to safe values
+  const invoice = (s as any).invoice;
+
   const paymentStatus: PaymentStatus =
-    s.invoice?.status === "PAID"
+    invoice?.status === "PAID"
       ? "Paid"
-      : s.invoice?.status === "ISSUED"
+      : invoice?.status === "ISSUED"
         ? "Pending"
         : "Pending";
 
   return {
     id: s.id,
     reference: s.referenceNumber,
-    customer: s.createdBy?.name ?? s.createdBy?.email ?? "—",
+    customer: s.driver?.user?.name ?? "—", // Use driver name as customer/assignee proxy or createdBy if available
     status,
     serviceLevel: "Standard",
     origin: { city: originCity, code: "ORG" },
@@ -164,8 +152,8 @@ function mapApiShipment(s: ApiShipment): Shipment {
     },
     payment: {
       status: paymentStatus,
-      amount: formatInr(s.invoice?.totalCents),
-      invoiceId: s.invoice?.invoiceNumber ?? "—",
+      amount: formatInr(invoice?.totalCents),
+      invoiceId: invoice?.invoiceNumber ?? "—",
     },
     route: {
       distanceKm: 0,
@@ -173,14 +161,12 @@ function mapApiShipment(s: ApiShipment): Shipment {
       vehicle: s.vehicle?.registrationNumber ?? "—",
     },
     timeline: buildTimeline(status, s.createdAt),
+    driverId: s.driverId || undefined,
+    vehicleId: s.vehicleId || undefined,
   };
 }
 
-async function fetchShipments(): Promise<Shipment[]> {
-  const body = await api.get<{ data: ApiShipment[] }>("/api/shipments");
-  const shipments = body?.data ?? [];
-  return shipments.filter(Boolean).map(mapApiShipment);
-}
+
 
 function toLifecycleStatus(status: ShipmentStatus): ShipmentLifecycleStatus {
   if (status === "Created") return "Created";
@@ -321,18 +307,43 @@ function etaTone(confidence: "High" | "Medium" | "Low"): "success" | "warning" |
   return "danger";
 }
 
+
 export default function ShipmentsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | ShipmentStatus>("All");
   const [paymentFilter, setPaymentFilter] = useState<"All" | PaymentStatus>("All");
   const [selectedId, setSelectedId] = useState<string>("");
 
-  const shipmentsQuery = useQuery({
-		queryKey: ["shipments"],
-		queryFn: fetchShipments,
-	});
+  const queryClient = useQueryClient();
+  const [isCreateOpen, setCreateOpen] = useState(false);
+  const [isAssignOpen, setAssignOpen] = useState(false);
+  const [isCreateTripSheetOpen, setCreateTripSheetOpen] = useState(false);
+  const [checkedShipmentIds, setCheckedShipmentIds] = useState<string[]>([]);
 
-	const shipments = shipmentsQuery.data ?? [];
+  /* Shared Hooks for SSOT */
+  const shipmentsQuery = useShipments();
+  const createShipmentMutation = useCreateShipment();
+  const updateStatusMutation = useUpdateShipmentStatus();
+
+  // Adapter for mutation.mutate(data) -> hook accepts object but signature might differ slightly
+  // hook: mutationFn: (payload) => ...
+  const handleCreate = (data: any) => {
+    createShipmentMutation.mutate({
+      ...data,
+      createdById: "00000000-0000-0000-0000-000000000001", // Default Admin
+      status: "DRAFT"
+    }, {
+      onSuccess: () => {
+        setCreateOpen(false);
+        toast.success("Shipment created successfully");
+      },
+      onError: (err) => toast.error("Failed to create shipment: " + err.message)
+    });
+  };
+
+  // useShipments returns { data: { data: Shipment[], pagination: ... } }
+  // We need to extract the array
+  const shipments = (shipmentsQuery.data?.data ?? []).map(mapApiShipment);
 
   const resolvedSelectedId = selectedId || shipments[0]?.id || "";
 
@@ -351,14 +362,48 @@ export default function ShipmentsPage() {
     return found ?? filtered[0] ?? null;
   }, [shipments, resolvedSelectedId, filtered]);
 
+
+
+  const handleStatusChange = (newStatus: string) => {
+    if (!selected) return;
+
+    // Map UI status to API status
+    let apiStatus: ApiShipmentStatus | undefined;
+    switch (newStatus) {
+      case "Created": apiStatus = "DRAFT"; break;
+      case "Dispatched": apiStatus = "PLANNED"; break;
+      case "In Transit": apiStatus = "IN_TRANSIT"; break;
+      case "Delivered": apiStatus = "DELIVERED"; break;
+      case "Cancelled": apiStatus = "CANCELLED"; break;
+    }
+
+    if (apiStatus) {
+      updateStatusMutation.mutate({ id: selected.id, status: apiStatus }, {
+        onError: (err) => toast.error("Failed to update status: " + err.message)
+      });
+    };
+  };
+
   return (
     <main id="main" className="px-4 py-6 md:ml-64">
       <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-foreground">Shipments</h1>
-          <p className="mt-1 text-sm text-foreground/60">
-            Search, filter, and review shipment details.
-          </p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">Shipments</h1>
+            <p className="mt-1 text-sm text-foreground/60">
+              Search, filter, and review shipment details.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {checkedShipmentIds.length > 0 && (
+              <Button variant="secondary" onClick={() => setCreateTripSheetOpen(true)}>
+                Create Trip Sheet ({checkedShipmentIds.length})
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setCreateOpen(true)}>
+              Create Shipment
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
@@ -367,12 +412,12 @@ export default function ShipmentsPage() {
             title="Shipment List"
             description="Search and filter shipments"
             action={
-					shipmentsQuery.isLoading ? (
-						<Pill>Loading…</Pill>
-					) : (
-						<Pill>{filtered.length} shown</Pill>
-					)
-				}
+              shipmentsQuery.isLoading ? (
+                <Pill>Loading…</Pill>
+              ) : (
+                <Pill>{filtered.length} shown</Pill>
+              )
+            }
           >
             <div className="space-y-3">
               <div className="grid gap-2">
@@ -430,23 +475,23 @@ export default function ShipmentsPage() {
               <div className="max-h-[520px] overflow-y-auto pr-1">
                 <div className="space-y-2">
                   {shipmentsQuery.isError ? (
-            <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">
-              Failed to load shipments.
-              <span className="ml-2 text-xs text-foreground/70">
-                {String(
-                  shipmentsQuery.error instanceof Error
-                    ? shipmentsQuery.error.message
-                    : ""
-                )}
-              </span>
-            </div>
-          ) : null}
+                    <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">
+                      Failed to load shipments.
+                      <span className="ml-2 text-xs text-foreground/70">
+                        {String(
+                          shipmentsQuery.error instanceof Error
+                            ? shipmentsQuery.error.message
+                            : ""
+                        )}
+                      </span>
+                    </div>
+                  ) : null}
 
                   {shipmentsQuery.isLoading ? (
-            <div className="rounded-lg border border-foreground/10 bg-foreground/5 p-3 text-sm text-foreground/70">
-              Loading shipments…
-            </div>
-          ) : null}
+                    <div className="rounded-lg border border-foreground/10 bg-foreground/5 p-3 text-sm text-foreground/70">
+                      Loading shipments…
+                    </div>
+                  ) : null}
 
                   {filtered.length === 0 ? (
                     <div className="rounded-lg border border-foreground/10 bg-foreground/5 p-3 text-sm text-foreground/70">
@@ -461,18 +506,47 @@ export default function ShipmentsPage() {
                         key={s.id}
                         type="button"
                         onClick={() => setSelectedId(s.id)}
-                        className={`w-full rounded-lg border p-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-foreground/30 ${
-                          active
-                            ? "border-foreground/20 bg-foreground/10"
-                            : "border-foreground/10 bg-card hover:bg-foreground/5"
-                        }`}
+                        className={`group relative w-full overflow-hidden rounded-xl border p-4 text-left outline-none transition-all duration-300 focus-visible:ring-2 focus-visible:ring-foreground/30 ${active
+                          ? "border-sky-500/50 bg-sky-500/10 shadow-[0_0_15px_rgba(14,165,233,0.15)]"
+                          : "border-foreground/10 bg-card hover:border-foreground/20 hover:shadow-lg"
+                          }`}
                       >
-                        <div className="flex items-start justify-between gap-3">
+                        {/* Checkbox for selection */}
+                        <div
+                          className="absolute left-4 top-4 z-20"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checkedShipmentIds.includes(s.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCheckedShipmentIds(prev => [...prev, s.id]);
+                              } else {
+                                setCheckedShipmentIds(prev => prev.filter(id => id !== s.id));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Hover Gradient for non-active items */}
+                        {!active && (
+                          <div className="absolute inset-0 bg-gradient-to-br from-foreground/5 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                        )}
+
+                        <div className="relative z-10 pl-8">
                           <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-foreground">
-                              {s.reference}
+                            <div className="flex items-center gap-2">
+                              <span className={`h-2 w-2 rounded-full ${s.status === 'Delivered' ? 'bg-emerald-500' :
+                                s.status === 'In Transit' ? 'bg-sky-500' :
+                                  s.status === 'Delayed' ? 'bg-rose-500' : 'bg-foreground/30'
+                                }`} />
+                              <div className="truncate text-sm font-bold text-foreground">
+                                {s.reference}
+                              </div>
                             </div>
-                            <div className="mt-1 truncate text-xs text-foreground/60">
+                            <div className="mt-1 truncate text-xs font-medium text-foreground/50 pl-4">
                               {s.customer}
                             </div>
                           </div>
@@ -481,11 +555,13 @@ export default function ShipmentsPage() {
                           </div>
                         </div>
 
-                        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-foreground/60">
-                          <span className="truncate">
-                            {s.origin.code} → {s.destination.code}
-                          </span>
-                          <span className="shrink-0">ETA: {s.eta.value}</span>
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-foreground/5 pl-4 pt-3 text-xs text-foreground/60">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-medium text-foreground/80">{s.origin.code}</span>
+                            <span className="text-foreground/30">→</span>
+                            <span className="font-medium text-foreground/80">{s.destination.code}</span>
+                          </div>
+                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider opacity-70">ETA: {s.eta.value}</span>
                         </div>
                       </button>
                     );
@@ -500,7 +576,25 @@ export default function ShipmentsPage() {
             title={selected ? `Shipment Details · ${selected.reference}` : "Shipment Details"}
             description={selected ? selected.customer : "Select a shipment"}
             action={
-              selected ? <TonePill tone={statusTone(selected.status)}>{selected.status}</TonePill> : null
+              selected ? (
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setAssignOpen(true)}>
+                    Assign Resources
+                  </Button>
+                  <select
+                    className="rounded-full border border-foreground/10 bg-card px-2 py-1 text-xs font-semibold uppercase tracking-wide text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                    value={selected.status}
+                    onChange={(e) => handleStatusChange(e.target.value)}
+                    disabled={updateStatusMutation.isPending}
+                  >
+                    <option value="Created">Created</option>
+                    <option value="Dispatched">Dispatched</option>
+                    <option value="In Transit">In Transit</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+              ) : null
             }
           >
             {selected ? (
@@ -554,13 +648,13 @@ export default function ShipmentsPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="secondary" onClick={() => alert(`View ${selected.id} (mock)`) }>
+                      <Button variant="secondary" onClick={() => toast.info(`View ${selected.id} (mock)`)}>
                         View
                       </Button>
-                      <Button variant="secondary" onClick={() => alert(`Track ${selected.id} (mock)`) }>
+                      <Button variant="secondary" onClick={() => toast.info(`Track ${selected.id} (mock)`)}>
                         Track
                       </Button>
-                      <Button variant="primary" onClick={() => alert(`Invoice ${selected.id} (mock)`) }>
+                      <Button variant="primary" onClick={() => toast.info(`Invoice ${selected.id} (mock)`)}>
                         Invoice
                       </Button>
                     </div>
@@ -594,7 +688,137 @@ export default function ShipmentsPage() {
             )}
           </Card>
         </div>
+
+        {
+          isCreateOpen ? (
+            <CreateShipmentModal
+              onClose={() => setCreateOpen(false)}
+              onSubmit={handleCreate}
+              isSubmitting={createShipmentMutation.isPending}
+            />
+          ) : null
+        }
+
+        <Modal
+          isOpen={isAssignOpen}
+          onClose={() => setAssignOpen(false)}
+          title={`Assign Resources - ${selected?.reference || ''}`}
+        >
+          {selected && (
+            <AssignResourceForm
+              shipmentId={selected.id}
+              currentDriverId={selected.driverId}
+              currentVehicleId={selected.vehicleId}
+              onSuccess={() => setAssignOpen(false)}
+              onCancel={() => setAssignOpen(false)}
+            />
+          )}
+        </Modal>
+
+        <CreateTripSheetModal
+          isOpen={isCreateTripSheetOpen}
+          onClose={() => {
+            setCreateTripSheetOpen(false);
+            setCheckedShipmentIds([]); // Clear selection after modal closes (optional, user preference often to keep? No, reset usually better)
+          }}
+          initialShipmentIds={checkedShipmentIds}
+        />
+
+      </div >
+    </main >
+  );
+}
+
+function CreateShipmentModal({
+  onClose,
+  onSubmit,
+  isSubmitting,
+}: {
+  onClose: () => void;
+  onSubmit: (data: { referenceNumber: string; originAddress: string; destinationAddress: string; weightKg: number }) => void;
+  isSubmitting: boolean;
+}) {
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [originAddress, setOriginAddress] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        className="absolute inset-0 bg-foreground/20"
+        aria-label="Close"
+        onClick={onClose}
+      />
+      <div className="absolute left-1/2 top-1/2 w-[min(92vw,400px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-foreground/10 bg-card p-4 shadow-sm z-50">
+        <h2 className="text-lg font-semibold text-foreground">Create Shipment</h2>
+        <p className="mt-1 text-xs text-foreground/60">
+          Create a new draft shipment.
+        </p>
+
+        <form
+          className="mt-4 grid gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            console.log("Shipment Form submitted");
+            onSubmit({ referenceNumber, originAddress, destinationAddress, weightKg: Number(weightKg) || 0 });
+          }}
+        >
+          <div className="grid gap-1">
+            <label className="text-xs font-semibold text-foreground/70">Reference #</label>
+            <input
+              required
+              type="text"
+              className="rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+              value={referenceNumber}
+              onChange={(e) => setReferenceNumber(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1">
+            <label className="text-xs font-semibold text-foreground/70">Origin Address</label>
+            <input
+              required
+              type="text"
+              className="rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+              value={originAddress}
+              onChange={(e) => setOriginAddress(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1">
+            <label className="text-xs font-semibold text-foreground/70">Destination Address</label>
+            <input
+              required
+              type="text"
+              className="rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+              value={destinationAddress}
+              onChange={(e) => setDestinationAddress(e.target.value)}
+            />
+          </div>
+          <div className="grid gap-1">
+            <label className="text-xs font-semibold text-foreground/70">Weight (kg)</label>
+            <input
+              type="number"
+              className="rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/30"
+              value={weightKg}
+              onChange={(e) => setWeightKg(e.target.value)}
+            />
+          </div>
+
+          <div className="mt-2 flex justify-end gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex items-center justify-center rounded-md bg-foreground px-3 py-2 text-sm font-semibold text-background hover:bg-foreground/90 disabled:opacity-50"
+            >
+              {isSubmitting ? "Creating…" : "Create Shipment"}
+            </button>
+          </div>
+        </form>
       </div>
-    </main>
+    </div>
   );
 }

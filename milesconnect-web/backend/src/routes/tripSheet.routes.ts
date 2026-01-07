@@ -8,6 +8,7 @@ import {
   addFuelStop,
   addExpense,
   createTripSheetsFromShipments,
+  settleTripSheet,
 } from "../controllers/tripSheet.controller";
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.patch("/:id", updateTripSheet);
 router.patch("/:id/status", updateTripSheetStatus);
 router.post("/:id/fuel-stops", addFuelStop);
 router.post("/:id/expenses", addExpense);
+router.post("/:id/settle", settleTripSheet);
 
 export default router;
 export { router as tripSheetRouter };

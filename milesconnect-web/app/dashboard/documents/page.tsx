@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import DocumentsManagementPage from "../../(dashboard)/documents/page";
+
+import DocumentsClient from "./documents-client";
 
 export const metadata: Metadata = {
   title: "Documents · MilesConnect",
 };
 
-export default function DocumentsPageAlias() {
-  return <DocumentsManagementPage />;
+export default function DocumentsManagementPage() {
+	return <DocumentsClient />;
 }

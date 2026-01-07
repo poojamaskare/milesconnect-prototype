@@ -22,3 +22,29 @@ export async function listDocuments(_req: Request, res: Response, next: NextFunc
 		next(err);
 	}
 }
+
+export async function createDocument(req: Request, res: Response, next: NextFunction) {
+	try {
+		const { type, fileName, url, shipmentId } = req.body;
+
+		// Basic validations
+		if (!type || !fileName || !url) {
+			res.status(400).json({ error: "Missing required fields: type, fileName, url" });
+			return;
+		}
+
+		const document = await prisma.document.create({
+			data: {
+				type,
+				fileName,
+				url,
+				shipmentId: shipmentId || null,
+				// In a real app, we'd get the user from the auth token
+			},
+		});
+
+		res.status(201).json(document);
+	} catch (err) {
+		next(err);
+	}
+}
